@@ -1,0 +1,81 @@
+{
+  "name": "oc3",
+  "version": "0.0.1",
+  "description": "Ultra-fast octree for three.js & React-Three-Fiber",
+  "keywords": [
+    "octree",
+    "three",
+    "r3f",
+    "spatial-index",
+    "webgl",
+    "scene graph",
+    "3d"
+  ],
+  "license": "MIT",
+  "author": "Gopalakrishna Palem",
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "bench": "node bench/bench.js",
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "three": ">=0.178.0"
+  },
+  "peerDependenciesMeta": {
+    "@react-three/fiber": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "zustand": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@react-three/fiber": "^9.2.0",
+    "@types/node": "^24.0.15",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@types/three": "^0.178.1",
+    "react": "^19.1.0",
+    "three": "^0.178.0",
+    "three-mesh-bvh": "^0.9.1",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.3",
+    "zustand": "^5.0.6"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./worker-backend": {
+      "types": "./dist/worker-backend.d.ts",
+      "import": "./dist/worker-backend.js",
+      "require": "./dist/worker-backend.cjs"
+    },
+    "./worker-proxy": {
+      "types": "./dist/worker-proxy.d.ts",
+      "import": "./dist/worker-proxy.js",
+      "require": "./dist/worker-proxy.cjs"
+    },
+    "./r3f": {
+      "types": "./dist/r3f.d.ts",
+      "import": "./dist/r3f.js",
+      "require": "./dist/r3f.cjs"
+    },
+    "./three": {
+      "types": "./dist/three.d.ts",
+      "import": "./dist/three.js",
+      "require": "./dist/three.cjs"
+    }
+  }
+}

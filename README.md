@@ -1,14 +1,41 @@
 # oc3
-High-performance **Octree** with _Three.js_ and _React-Three-Fiber_ (r3f) compatibility
+High-performance **Octree** for _Three.js_
 
-## Install
+- Table of Contents
+  - [Usage](#usage)
+  - [Quick Reference – API Cheat-Sheet](#quick-reference--api-cheat-sheet)
+  - [Features](#features)
+  - [Usage Cookbook](#usage-cookbook)
+    - [1. Vanilla Three.js – Raycasting against 100 k meshes](#1-vanilla-threejs--raycasting-against-100-k-meshes)
+    - [2. React-Three-Fiber – Automatic registration](#2-react-three-fiber--automatic-registration)
+    - [3. Frustum Culling – Massive Tileset](#3-frustum-culling--massive-tileset)
+    - [4. Physics Broad-Phase – Overlap Queries](#4-physics-broad-phase--overlap-queries)
+    - [5. LOD Selection – Distance-Sorted List](#5-lod-selection--distance-sorted-list)
+    - [6. Web Worker – Zero-Copy Batch Updates](#6-web-worker--zero-copy-batch-updates)
+    - [7. Streaming – Add \& Remove Tiles over Time](#7-streaming--add--remove-tiles-over-time)
+    - [8. React-Three-Fiber + Worker (Full Pipeline)](#8-react-three-fiber--worker-full-pipeline)
+    - [9. Debug Visualization (r3f helper)](#9-debug-visualization-r3f-helper)
+    - [10. Manual Frame-by-Frame Update (Camera-Following Objects)](#10-manual-frame-by-frame-update-camera-following-objects)
+
+
+## Usage
+Install:
 ```sh
 npm add oc3
 ```
 With dependencies:
 ```sh
-npm add three @react-three/fiber oc3
+npm add three oc3
 ```
+
+Import into your code:
+```ts
+import { Octree } from 'oc3'
+import { OctreeWorkerBackend } from 'oc3/worker-backend'
+```
+### Examples
+  - Check [demo](examples/demo.html) for a full-blown html example of `oc3` being used with Web-Worker backend.
+  - Refer [usage cookbook](#usage-cookbook) for stand alone ready-to-use examples of using `oc3` in various scenarios.
 
 ## Quick Reference – API Cheat-Sheet
 
@@ -25,30 +52,30 @@ npm add three @react-three/fiber oc3
 ## Features
 
 1. Goals  
-   • Provide an **octree spatial-index** that is **blazing-fast** for three.js geometries and objects.  
-   • Remain **framework-agnostic**: must work in vanilla three.js, r3f, A-Frame, Babylon (via adapters), etc.  
-   • TypeScript-first, tree-shakeable ESM, zero runtime deps except `three`.  
-   • Offer **both** an **acceleration structure** (for raycasting, frustum culling, nearest-neighbor, etc.) and **an optional ECS-friendly wrapper** for reactive scenes (r3f).  
-   • Memory & CPU budget:  
-     – ≤ 40 ns per insertion in hot path (≈ 25 M ops/s on M2).  
-     – ≤ 4 bytes per empty child pointer (typed arrays).  
-     – GC pressure ≈ 0 (pre-allocated pools).  
+   - Provide an **octree spatial-index** that is **blazing-fast** for three.js geometries and objects.  
+   - Remain **framework-agnostic**: must work in vanilla three.js, r3f, A-Frame, Babylon (via adapters), etc.  
+   - TypeScript-first, tree-shakeable ESM, zero runtime deps except `three`.  
+   - Offer **both** an **acceleration structure** (for raycasting, frustum culling, nearest-neighbor, etc.) and **an optional ECS-friendly wrapper** for reactive scenes (r3f).  
+   - Memory & CPU budget:  
+     - ≤ 40 ns per insertion in hot path (≈ 25 M ops/s on M2).  
+     - ≤ 4 bytes per empty child pointer (typed arrays).  
+     - GC pressure ≈ 0 (pre-allocated pools).  
 
 2. Use-Cases it is Optimised for
 
-   a. **Raycasting** on 100 k meshes (r3f `<mesh>`).  
-   b. **Frustum culling** for massive tilesets.  
-   c. **Physics broad-phase** (AABB queries).  
-   d. **LOD selection** (find all objects inside node).  
-   e. **Streaming** - fast insert / remove / update as tiles stream in.  
+   - **Raycasting** on 100 k meshes (r3f `<mesh>`).  
+   - **Frustum culling** for massive tilesets.  
+   - **Physics broad-phase** (AABB queries).  
+   - **LOD selection** (find all objects inside node).  
+   - **Streaming** - fast insert / remove / update as tiles stream in.  
 
-4. Design Highlights  
-   • Does **not** allocate on every insertion/removal (object pooling).  
-   • Does allow **SIMD-like AABB tests** (SoA float32 arrays).  
-   • **Reuses three.js math primitives** (`THREE.Box3`, `THREE.Vector3`, etc.) but **allows zero-copy** when caller already has flat arrays.  
-   • Exposes **iterator-based API** to avoid large temporary arrays.  
+3. Design Highlights  
+   - Does **not** allocate on every insertion/removal (object pooling).  
+   - Does allow **SIMD-like AABB tests** (SoA float32 arrays).  
+   - **Reuses three.js math primitives** (`THREE.Box3`, `THREE.Vector3`, etc.) but **allows zero-copy** when caller already has flat arrays.  
+   - Exposes **iterator-based API** to avoid large temporary arrays.  
 
-5. API Surface (vanilla)  
+4. API Surface (vanilla)  
    ```
    class Octree {
      constructor(box?: Box3, maxDepth?: number, maxObjects?: number);
@@ -61,16 +88,16 @@ npm add three @react-three/fiber oc3
      clear(): void;
    }
    ```
-   • Each method is **iterative** (no recursion) to avoid call-stack overhead.  
-   • `Object3D` is optional; plain AABB can be used for pure data.  
+   - Each method is **iterative** (no recursion) to avoid call-stack overhead.  
+   - `Object3D` is optional; plain AABB can be used for pure data.  
 
-6. r3f (react-three-fiber) Integration  
+5. r3f (react-three-fiber) Integration  
    A thin React reconciler wrapper that:  
-   • Subscribes to r3f’s `useFrame` to update moving objects via `Octree#update`.  
-   • Provides `<OctreeProvider>` context so child meshes register themselves automatically via `React.useLayoutEffect`.  
-   • Exposes a hook `useOctree()` to run spatial queries in user land.  
+   - Subscribes to r3f’s `useFrame` to update moving objects via `Octree#update`.  
+   - Provides `<OctreeProvider>` context so child meshes register themselves automatically via `React.useLayoutEffect`.  
+   - Exposes a hook `useOctree()` to run spatial queries in user land.  
 
-7. Memory Layout (SoA)  
+6. Memory Layout (SoA)  
    ```
    Float32Array(8*3)  // 8 corner xyz (static)
    Uint16Array(8)     // child indices (-1 = null)
@@ -85,19 +112,19 @@ npm add three @react-three/fiber oc3
    ```
    Hot loops operate on contiguous Float32Array → **SIMD-friendly**.  
 
-8. Build & Distribution  
-   • `tsup` for ESM/CJS dual package.  
-   • `exports` map with `"three"` as **peer dependency**.  
-   • `"sideEffects": false` for full tree-shaking.  
-   • Provides `three-octree/three` entry for three.js specific helpers, and `three-octree/core` for framework-agnostic core.  
+7. Build & Distribution  
+   - `tsup` for ESM/CJS dual package.  
+   - `exports` map with `"three"` as **peer dependency**.  
+   - `"sideEffects": false` for full tree-shaking.  
+   - Provides `three-octree/three` entry for three.js specific helpers, and `three-octree/core` for framework-agnostic core.  
 
-9. Benchmark Harness  
-   • vitest + @thi.ng/bench.  
-   • Compare against `THREE.MeshBVH`, naive linear.  
+8. Benchmark Harness  
+   - vitest + @thi.ng/bench.  
+   - Compare against `THREE.MeshBVH`, naive linear.  
 
-10. Future expansions possible:
-   • **Compressed octree** (SVO) for GPU storage.  
-   • **WebWorkers** batch update API.  
+9.  Future expansions:
+       - [ ] **Compressed octree** (SVO) for GPU storage.  
+       - [x] **WebWorkers** batch update API.  (*Update*: already implemented. Refer the [documentation](./WebWorkes.md))
 
 
 ### Performance Notes
