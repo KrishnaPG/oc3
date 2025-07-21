@@ -25,6 +25,7 @@ export class Octree {
     this.box = box ?? new Box3().setFromCenterAndSize(new Vector3(), new Vector3(1, 1, 1).multiplyScalar(1e3));
     this.maxDepth = opts.maxDepth ?? 8;
     this.maxObjects = opts.maxObjects ?? 16;
+    this.root.box.copy(this.box);
   }
 
   insert(obj: { box: Box3; id?: number }) {
@@ -72,16 +73,20 @@ class Node {
   }
 
   insert(box: Box3, id: number, maxObjects: number, maxDepth: number, store: ObjectStore) {
-    // if (!box.intersectsBox(this.box)) return;
-
-    if (!this.children && this.level < maxDepth && store.count(this.head) >= maxObjects) {
-      this.split(store);
-    }
+    if (!this.box.intersectsBox(box)) return;
 
     if (this.children) {
-      for (const c of this.children) c.insert(box, id, maxObjects, maxDepth, store);
-    } else {
-      this.head = store.add(this.head, box, id);
+      const index = this.getChildIndex(box);
+      if (index !== -1) {
+        this.children[index].insert(box, id, maxObjects, maxDepth, store);
+        return;
+      }
+    }
+
+    this.head = store.add(this.head, box, id);
+
+    if (!this.children && this.level < maxDepth && store.count(this.head) >= maxObjects) {
+      this.split(store, maxObjects, maxDepth);
     }
   }
 
@@ -95,7 +100,7 @@ class Node {
     }
   }
 
-  split(store: ObjectStore) {
+  split(store: ObjectStore, maxObjects: number, maxDepth: number) {
     const { min, max } = this.box;
     const mid = tmpVec.addVectors(min, max).multiplyScalar(0.5);
 
@@ -111,14 +116,44 @@ class Node {
       return node;
     });
 
-    // Reinsert objects into children
-    let cur = this.head;
+    const oldHead = this.head;
     this.head = -1;
+    let cur = oldHead;
+
     while (cur !== -1) {
       const { box, id, next } = store.get(cur);
-      for (const c of this.children!) c.insert(box, id, 16, 8, store);
+      const index = this.getChildIndex(box);
+      if (index !== -1) {
+        this.children[index].insert(box, id, maxObjects, maxDepth, store);
+      } else {
+        this.head = store.add(this.head, box, id);
+      }
       cur = next;
     }
+  }
+
+  private getChildIndex(box: Box3): number {
+    const { min, max } = this.box;
+    const mid = tmpVec.addVectors(min, max).multiplyScalar(0.5);
+    const { min: bmin, max: bmax } = box;
+
+    const fitsInLowerX = bmax.x <= mid.x;
+    const fitsInUpperX = bmin.x >= mid.x;
+    const fitsInLowerY = bmax.y <= mid.y;
+    const fitsInUpperY = bmin.y >= mid.y;
+    const fitsInLowerZ = bmax.z <= mid.z;
+    const fitsInUpperZ = bmin.z >= mid.z;
+
+    if (fitsInLowerX && fitsInLowerY && fitsInLowerZ) return 0;
+    if (fitsInUpperX && fitsInLowerY && fitsInLowerZ) return 1;
+    if (fitsInLowerX && fitsInUpperY && fitsInLowerZ) return 2;
+    if (fitsInUpperX && fitsInUpperY && fitsInLowerZ) return 3;
+    if (fitsInLowerX && fitsInLowerY && fitsInUpperZ) return 4;
+    if (fitsInUpperX && fitsInLowerY && fitsInUpperZ) return 5;
+    if (fitsInLowerX && fitsInUpperY && fitsInUpperZ) return 6;
+    if (fitsInUpperX && fitsInUpperY && fitsInUpperZ) return 7;
+
+    return -1; // Object spans multiple children
   }
 
   aabbQuery(box: Box3, visitor: (id: number) => void, store: ObjectStore) {
