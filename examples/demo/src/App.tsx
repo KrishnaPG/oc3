@@ -1,14 +1,16 @@
-import React, { Suspense } from 'react'
-import { Canvas } from '@react-three/fiber'
-import { EffectComposer, Bloom } from '@react-three/postprocessing'
+import React, { Suspense } from "react";
+import { Canvas } from "@react-three/fiber";
+import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import { OctreeProxyProvider } from "../../../src/r3f";
-import { OctreeProxy } from '../../../src/worker-proxy'
-import Scene from './Scene'
-import UI from './UI'
-import { OrbitControls } from '@react-three/drei';
+import { OctreeProxy } from "../../../src/worker-proxy";
+import Scene from "./Scene";
+import UI from "./UI";
+import { OrbitControls, Stats } from "@react-three/drei";
 
-const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' })
-const octree = new OctreeProxy(worker)
+const workerScriptURL = new URL('./worker.ts', import.meta.url); // "https://unpkg.com/oc3@latest/dist/worker-backend.js";
+
+const worker = new Worker(workerScriptURL, { type: "module" });
+const octree = new OctreeProxy(worker);
 
 function App() {
   return (
@@ -16,9 +18,10 @@ function App() {
       <Canvas shadows camera={{ fov: 75, near: 0.1, far: 10000, position: [3, 5, 3] }}>
         <OrbitControls />
         <axesHelper />
+        <Stats />
         <gridHelper args={[10, 10, "green", "blue"]} />
         <OctreeProxyProvider octreeProxy={octree}>
-          <Suspense fallback={null}>
+          <Suspense fallback={<span>Loading ...</span>}>
             <Scene />
           </Suspense>
           <EffectComposer>
@@ -31,4 +34,4 @@ function App() {
   );
 }
 
-export default App
+export default App;

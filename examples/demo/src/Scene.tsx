@@ -43,7 +43,11 @@ function Scene() {
           max: o.pos.map((v) => v + 0.5),
         } as InsertMsg)
     );
-    octree.postBatch(batch);
+    // wait till webworker is ready
+    octree.ready().then(() => {
+      console.log("Posting Batch for Object insertion into Octree");
+      octree.postBatch(batch);
+    });
   }, [objects, octree]);
 
   const vel = useRef([0, 0, 0]);
@@ -61,7 +65,8 @@ function Scene() {
     vel.current[1] = Math.max(y - gravity * dt, 0);
     camera.position.y += y * dt;
     if (camera.position.y < 2) camera.position.y = 2;
-  }); console.log("peoasdfa")
+  });
+  console.log("peoasdfa");
 
   useEffect(() => {
     const shoot = () => {
@@ -84,38 +89,33 @@ function Scene() {
     return () => window.removeEventListener("click", shoot);
   }, [camera, objects, octree]);
 
-  const visible = useRef<number[]>([]);
+  const [visibleObjIds, setVisibleObjIds] = useState<number[]>([]);
   useFrame(() => {
     const frustum = new THREE.Frustum().setFromProjectionMatrix(
       camera.projectionMatrix.clone().multiply(camera.matrixWorldInverse)
     );
-    octree.frustumQuery(frustum).then(ids => visible.current = ids);
+    octree.frustumQuery(frustum).then(setVisibleObjIds);
   });
 
   return (
     <>
-      <PointerLockControls />
+      {/* <PointerLockControls /> */}
       <ambientLight intensity={0.4} />
       <pointLight position={[100, 100, 100]} intensity={1} />
       <Suspense fallback={<span>Loading...</span>}>
-        {objects.map((o) => {
-          const show = visible.current.includes(o.id);
-          if (!show) return null;
+        {visibleObjIds.map((id) => {
+          const o = objects[id];
           const [x, y, z] = o.pos;
           const key = o.id;
-          if (o.type === "box") {
-            return (
-              <Box key={key} args={[1, 1, 1]} position={[x, y, z]}>
-                <meshStandardMaterial color="#0ff" />
-              </Box>
-            );
-          } else {
-            return (
-              <Sphere key={key} args={[0.5, 16, 16]} position={[x, y, z]}>
-                <meshStandardMaterial color="#f0f" />
-              </Sphere>
-            );
-          }
+          return o.type === "box" ? (
+            <Box key={key} args={[1, 1, 1]} position={[x, y, z]}>
+              <meshStandardMaterial color="#0ff" />
+            </Box>
+          ) : (
+            <Sphere key={key} args={[0.5, 16, 16]} position={[x, y, z]}>
+              <meshStandardMaterial color="#f0f" />
+            </Sphere>
+          );
         })}
         {particles.map(({ pos, color, id }) => (
           <Explosion key={id} pos={pos} color={color} />

@@ -2,19 +2,19 @@
 import { Box3, Vector3, Frustum, Matrix4, Ray, Plane } from "three";
 
 import { Octree } from "./core/Octree";
-import { WorkerMsg } from "./worker-msg-types"; console.log("loading worker-backend: ");
+import { WorkerMsg } from "./worker-msg-types";
 
 export class WorkerBackend {
   private octree = new Octree();
   private scope: DedicatedWorkerGlobalScope;
 
-  constructor(scope: DedicatedWorkerGlobalScope) {console.log("inside constructor")
+  constructor(scope: DedicatedWorkerGlobalScope) {
     this.scope = scope;
     scope.onmessage = (ev: MessageEvent<WorkerMsg>) => this.onMessage(ev.data);
+    scope.postMessage({}); // empty message to signal to the proxy that the worker is ready !!
   }
 
   private onMessage(msg: WorkerMsg) {
-    console.log("message: ", msg)
     // check if this is a batched Message
     if (Array.isArray(msg)) return msg.forEach(m => this.onMessage(m));
     // if this is a single message

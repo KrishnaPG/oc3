@@ -13,6 +13,11 @@ export interface RayCastHit {
   distance: number;
 };
 
+/**
+ * A dynamic, loose octree implementation for 3D spatial partitioning.
+ * It is "loose" because objects that span multiple child nodes are stored
+ * in the parent, rather than being split or duplicated.
+ */
 export class Octree {
   readonly box: Box3;
   readonly maxDepth: number;
@@ -61,6 +66,11 @@ export class Octree {
   }
 }
 
+/**
+ * Represents a single node in the octree.
+ * Each node has a bounding box and can either contain a list of objects
+ * or have 8 child nodes.
+ */
 class Node {
   level: number;
   box: Box3;
@@ -72,6 +82,19 @@ class Node {
     this.box = new Box3();
   }
 
+  /**
+   * Inserts an object into the octree.
+   * The method recursively descends the tree to find the most appropriate node.
+   *
+   * Insertion Logic:
+   * 1. If the object does not intersect the node's bounding box, do nothing.
+   * 2. If the node has children, determine which child the object fits into.
+   *    - If it fits entirely within one child, recursively call insert on that child.
+   *    - If it spans multiple children, it is stored in the current (parent) node.
+   * 3. If the node is a leaf (no children), add the object to this node's list.
+   * 4. After adding, if the node exceeds `maxObjects` and has not reached `maxDepth`,
+   *    it is split into 8 children, and its objects are redistributed.
+   */
   insert(box: Box3, id: number, maxObjects: number, maxDepth: number, store: ObjectStore) {
     if (!this.box.intersectsBox(box)) return;
 
@@ -132,6 +155,11 @@ class Node {
     }
   }
 
+  /**
+   * Determines which child node an object's bounding box fits into.
+   * @returns The index of the child (0-7) if it fits completely, or -1 if it spans
+   *          multiple children.
+   */
   private getChildIndex(box: Box3): number {
     const { min, max } = this.box;
     const mid = tmpVec.addVectors(min, max).multiplyScalar(0.5);
@@ -253,4 +281,4 @@ function intersectRayBoxSlab(
   if (tzmax < tmax) tmax = tzmax;
 
   return tmin >= 0 ? tmin : (tmax >= 0 ? tmax : Infinity);
-}  
+}
