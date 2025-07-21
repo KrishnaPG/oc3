@@ -6,39 +6,41 @@ export interface BaseMsg {
 }
 
 export interface InsertMsg extends BaseMsg {
-  type: "insert";
+  cmd: "insert";
   id: number;
   min: Vec3Array;
   max: Vec3Array;
 }
 
 export interface RemoveMsg extends BaseMsg {
-  type: "remove";
+  cmd: "remove";
   id: number;
 }
 
 export interface UpdateMsg extends BaseMsg {
-  type: "update";
+  cmd: "update";
   id: number;
   min: Vec3Array;
   max: Vec3Array;
 }
 
 export interface RaycastMsg extends BaseMsg {
-  type: "raycast";
+  cmd: "raycast";
   origin: Vec3Array;
   direction: Vec3Array;
 }
 
 export interface AabbQueryMsg extends BaseMsg {
-  type: "aabbQuery";
+  cmd: "aabbQuery";
   min: Vec3Array;
   max: Vec3Array;
 }
 
 export interface FrustumQueryMsg extends BaseMsg {
-  type: "frustumQuery";
+  cmd: "frustumQuery";
   planes: number[]; // 6 planes, 4 floats each → 24 numbers
 }
 
-export type WorkerMsg = InsertMsg | RemoveMsg | UpdateMsg | RaycastMsg | AabbQueryMsg | FrustumQueryMsg;
+export type SingleMsg = InsertMsg | RemoveMsg | UpdateMsg | RaycastMsg | AabbQueryMsg | FrustumQueryMsg; 
+export type BatchMessage = Array<SingleMsg>;
+export type WorkerMsg = SingleMsg | BatchMessage;

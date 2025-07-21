@@ -1,7 +1,7 @@
 // worker-proxy.ts  (runs on main thread)
 import { Box3, Frustum, Ray, Vector3 } from "three";
 
-import type { Vec3Array, RaycastMsg, AabbQueryMsg, FrustumQueryMsg } from "./worker-msg-types";
+import type { Vec3Array, RaycastMsg, AabbQueryMsg, FrustumQueryMsg, BatchMessage } from "./worker-msg-types";
 
 interface Pending {
   resolve: (value: any) => void;
@@ -33,17 +33,17 @@ export class OctreeProxy {
   }
 
   /* ---------- Write API (fire-and-forget batch) ---------- */
-  postBatch(batch: any[]) {
+  postBatch(batch: BatchMessage) {
     this.worker.postMessage(batch);
   }
 
   /* ---------- Read API (async promise-based) ---------- */
 
   /** Raycast → Array<{id:number, distance:number}> */
-  raycast(origin: Vector3, direction: Vector3): Promise<{ id: number; distance: number }[]> {
+  raycast(ray: Ray): Promise<{ id: number; distance: number }[]> {
     return this.request<RaycastMsg>("raycast", {
-      origin: origin.toArray() as Vec3Array,
-      direction: direction.toArray() as Vec3Array,
+      origin: ray.origin.toArray() as Vec3Array,
+      direction: ray.direction.toArray() as Vec3Array,
     });
   }
 
@@ -67,11 +67,11 @@ export class OctreeProxy {
   }
 
   /* ---------- internal ---------- */
-  private request<T>(type: string, payload: Record<string, unknown>) {
+  private request<T>(cmd: string, payload: Record<string, unknown>) {
     return new Promise<any>((resolve) => {
       const id = ++this.msgId;
       this.pending.set(id, { resolve });
-      this.worker.postMessage({ ...payload, type, id });
+      this.worker.postMessage({ ...payload, cmd, id });
     });
   }
 }

@@ -8,6 +8,11 @@ export interface OctreeOptions {
   maxObjects?: number;
 }
 
+export interface RayCastHit {
+  id: number;
+  distance: number;
+};
+
 export class Octree {
   readonly box: Box3;
   readonly maxDepth: number;
@@ -43,7 +48,7 @@ export class Octree {
     this.root.frustumQuery(frustum, visitor, this.store);
   }
 
-  raycast(ray: Ray, out: { id: number; distance: number }[]): void {
+  raycast(ray: Ray, out: RayCastHit[]): void {
     out.length = 0; // reuse caller's array to avoid GC churn
     const invDir = new Vector3(1 / ray.direction.x, 1 / ray.direction.y, 1 / ray.direction.z); // to avoid recalculations
     this.root.raycast(ray, invDir, out, this.store);
@@ -67,7 +72,7 @@ class Node {
   }
 
   insert(box: Box3, id: number, maxObjects: number, maxDepth: number, store: ObjectStore) {
-    if (!box.intersectsBox(this.box)) return;
+    // if (!box.intersectsBox(this.box)) return;
 
     if (!this.children && this.level < maxDepth && store.count(this.head) >= maxObjects) {
       this.split(store);
@@ -144,17 +149,12 @@ class Node {
     }
   }
 
-  raycast(
-    ray: Ray,
-    invDir: Vector3,
-    out: { id: number; distance: number }[],
-    store: ObjectStore
-  ): void {
+  raycast(ray: Ray, invDir: Vector3, out: RayCastHit[], store: ObjectStore): void {
     // iterative stack (pre-allocated 64 levels max)
     const stack: Node[] = new Array(64);
     let sp = 0;
     let node: Node | null = this;
-  
+
     while (node) {
       if (node.children) {
         // push children in near-to-far order

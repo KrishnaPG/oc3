@@ -1,2 +1,2 @@
-export { Octree } from "./core/Octree.js";
-export { ObjectStore } from "./core/ObjectStore.js";
+export * from "./core/Octree";
+export * from "./core/ObjectStore";

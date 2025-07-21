@@ -6,13 +6,14 @@ import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import { Octree } from "../core/Octree";
 import { OctreeProxy } from "../worker-proxy";
+import { BatchMessage } from "../worker-msg-types";
 
 /* ---------- global Zustand store (bypass React) ---------- */
 interface MeshStore {
   queue: Map<number, { min: Vector3; max: Vector3 }>;
   add(id: number, min: Vector3, max: Vector3): void;
   remove(id: number): void;
-  flush(): MapIterator<[Number,{ min: Vector3; max: Vector3 }]>;
+  flush(): MapIterator<[number,{ min: Vector3; max: Vector3 }]>;
 }
 const meshStore = create<MeshStore>()(
   subscribeWithSelector((set, get) => ({
@@ -32,7 +33,7 @@ const meshStore = create<MeshStore>()(
 );
 
 /* ---------- tiny worker helper ---------- */
-const batch: any[] = [];
+const batch: BatchMessage = [];
 let frameScheduled = false;
 function scheduleBatch(octree: OctreeProxy) {
   if (frameScheduled) return;

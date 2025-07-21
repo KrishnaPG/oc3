@@ -2,22 +2,26 @@
 import { Box3, Vector3, Frustum, Matrix4, Ray, Plane } from "three";
 
 import { Octree } from "./core/Octree";
-import { WorkerMsg } from "./worker-msg-types";
+import { WorkerMsg } from "./worker-msg-types"; console.log("loading worker-backend: ");
 
 export class WorkerBackend {
   private octree = new Octree();
   private scope: DedicatedWorkerGlobalScope;
 
-  constructor(scope: DedicatedWorkerGlobalScope) {
+  constructor(scope: DedicatedWorkerGlobalScope) {console.log("inside constructor")
     this.scope = scope;
     scope.onmessage = (ev: MessageEvent<WorkerMsg>) => this.onMessage(ev.data);
   }
 
   private onMessage(msg: WorkerMsg) {
-    switch (msg.type) {
+    console.log("message: ", msg)
+    // check if this is a batched Message
+    if (Array.isArray(msg)) return msg.forEach(m => this.onMessage(m));
+    // if this is a single message
+    switch (msg.cmd) {
       case "insert":
         this.octree.insert({
-          box: new Box3().set(new Vector3(...msg.min), new Vector3(...msg.max)),
+          box: new Box3(new Vector3(...msg.min), new Vector3(...msg.max)),
           id: msg.id,
         });
         break;
@@ -29,14 +33,13 @@ export class WorkerBackend {
       case "update":
         this.octree.update({
           id: msg.id,
-          box: new Box3().set(new Vector3(...msg.min), new Vector3(...msg.max)),
+          box: new Box3(new Vector3(...msg.min), new Vector3(...msg.max)),
         });
         break;
 
       case "raycast": {
         const ray = new Ray(new Vector3(...msg.origin), new Vector3(...msg.direction));
         const hits: { id: number; distance: number }[] = [];
-        // local helper that fills hits
         this.octree.raycast(ray, hits);
         this.reply(msg.id, hits);
         break;
