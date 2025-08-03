@@ -36,6 +36,12 @@ export class ObjectStore {
   /** An Int32 view into the buffer for accessing ID and pointer data. */
   private int32 = new Int32Array(this.buffer);
 
+  /** just temp variables, to avoid repeat allocations in loops */
+  public scratch = {
+    tmpVec: new Vector3(),
+    stack: new Array(64)
+  }
+
   /**
    * A list of indices that have been freed. When adding a new object,
    * these recycled slots are used before expanding the store.

@@ -1,25 +1,28 @@
 import { Box3, Frustum, Ray, Vector3 } from "three";
 import { ObjectStore } from "./ObjectStore";
 
-const tmpVec = new Vector3();
 
-export interface OctreeOptions {
+export interface IOctreeOptions {
   maxDepth?: number;
   maxObjects?: number;
 }
 
-export interface RayCastHit {
+export interface IRayCastHit {
   id: number;
   distance: number;
 };
 
-export interface VisibleNode {
+export interface IVisibleNode {
   node: Node;
   distance: number;   // camera to node center (for LOD)
   mouseHit?: {        // only present if the mouse ray hit something inside this node
     id: number;
     distance: number; // ray origin to target 
   };
+}
+
+export interface IVisibleNodeVisitor {
+  (vn: IVisibleNode): boolean | void;
 }
 
 /**
@@ -37,7 +40,7 @@ export class Octree {
   private store = new ObjectStore();
   private root = new Node(0, this.store);
 
-  constructor(box?: Box3, opts: OctreeOptions = {}) {
+  constructor(box?: Box3, opts: IOctreeOptions = {}) {
     this.box = box ?? new Box3().setFromCenterAndSize(new Vector3(), new Vector3(1, 1, 1).multiplyScalar(1e3));
     this.maxDepth = opts.maxDepth ?? 8;
     this.maxObjects = opts.maxObjects ?? 16;
@@ -65,7 +68,7 @@ export class Octree {
     this.root.frustumQuery(frustum, visitor, this.store);
   }
 
-  raycast(ray: Ray, out: RayCastHit[]): void {
+  raycast(ray: Ray, out: IRayCastHit[]): void {
     out.length = 0; // reuse caller's array to avoid GC churn
     const invDir = new Vector3(1 / ray.direction.x, 1 / ray.direction.y, 1 / ray.direction.z); // to avoid recalculations
     this.root.raycast(ray, invDir, out, this.store);
@@ -74,32 +77,27 @@ export class Octree {
   /**
    * @exmple
       // ---- once per frame ----
-      const visible: VisibleNode[] = scratchVis;
-      
-      octree.frustumRaycast(cameraFrustum, mouseRay, visible);
-
       let closestPick: { id: number; distance: number } | null = null;
-      // ---- visitor loop ----
-      for (let i = 0, n = visible.length; i < n; ++i) {
-        const { node, distance, mouseHit } = visible[i];
-
-        // 1.  LOD for every visible node ------------------------------ 
+      
+      octree.frustumRaycast(cameraFrustum, mouseRay, visibleNode => {
+        // 1. LOD for every visible node
         const lod = lodFromDistance(distance);   // fast table lookup
         renderNode(node, lod);
-
-        // 2.  Picking: first hit wins (array is front-to-back) -------- 
-        if(mouseHit && closestPick === null) {   // null check compiles to a single branch
+        
+        // 2. Picking: track the closest hit
+        if (mouseHit && (!closestPick || mouseHit.distance < closestPick.distance)) {
           closestPick = mouseHit;
-          highlight(mouseHit.id);
         }
+      });
+
+      // After traversal, use the closest pick
+      if (closestPick) {
+        highlight(closestPick.id);
       }
-      // ---- optional cleanup ----
-      scratchVis.length = 0;   // reuse next frame
    */
-  frustumRaycast(frustum: Frustum, ray: Ray, out: VisibleNode[]): void {
-    out.length = 0; // reuse caller's array to avoid GC churn
+  frustumRaycast(frustum: Frustum, ray: Ray, visitor: IVisibleNodeVisitor): void {
     const invDir = new Vector3(1 / ray.direction.x, 1 / ray.direction.y, 1 / ray.direction.z); // to avoid recalculations
-    this.root.frustumRaycast(frustum, ray, invDir, out, this.store);
+    this.root.frustumRaycast(frustum, ray, invDir, visitor, this.store);
   }
 
   clear() {
@@ -145,7 +143,7 @@ class Node {
     if (!this.box.intersectsBox(box)) return;
 
     if (this.children) {
-      const index = this.getChildIndex(box);
+      const index = this.getChildIndex(box, store.scratch.tmpVec);
       if (index !== -1) {
         this.children[index].insert(box, id, maxObjects, maxDepth, store);
         return;
@@ -170,6 +168,7 @@ class Node {
   }
 
   split(store: ObjectStore, maxObjects: number, maxDepth: number) {
+    const tmpVec = store.scratch.tmpVec;
     const { min, max } = this.box;
     const mid = tmpVec.addVectors(min, max).multiplyScalar(0.5);
 
@@ -191,7 +190,7 @@ class Node {
 
     while (cur !== -1) {
       const { box, id, next } = store.get(cur);
-      const index = this.getChildIndex(box);
+      const index = this.getChildIndex(box, tmpVec);
       if (index !== -1) {
         this.children[index].insert(box, id, maxObjects, maxDepth, store);
       } else {
@@ -206,7 +205,7 @@ class Node {
    * @returns The index of the child (0-7) if it fits completely, or -1 if it spans
    *          multiple children.
    */
-  private getChildIndex(box: Box3): number {
+  private getChildIndex(box: Box3, tmpVec:Vector3): number {
     const { min, max } = this.box;
     const mid = tmpVec.addVectors(min, max).multiplyScalar(0.5);
     const { min: bmin, max: bmax } = box;
@@ -265,9 +264,9 @@ class Node {
     // }
   }
 
-  raycast(ray: Ray, invDir: Vector3, out: RayCastHit[], store: ObjectStore): void {
+  raycast(ray: Ray, invDir: Vector3, out: IRayCastHit[], store: ObjectStore): void {
     // iterative stack (pre-allocated 64 levels max)
-    const stack: Node[] = new Array(64);
+    const stack: Node[] = store.scratch.stack;
     let sp = 0;
     let node: Node | null = this;
 
@@ -303,9 +302,9 @@ class Node {
     }
   }
 
-  frustumRaycast(frustum: Frustum, ray: Ray, invDir: Vector3, out: VisibleNode[], store: ObjectStore) {
+  frustumRaycast(frustum: Frustum, ray: Ray, invDir: Vector3, visitor: IVisibleNodeVisitor, store: ObjectStore) {
     const camPos = ray.origin;            // we need this for LOD distance
-    const stack: Node[] = new Array(64);  // iterative DFS
+    const stack: Node[] = store.scratch.stack;  // iterative DFS
 
     let sp = 0;
     stack[sp++] = this;
@@ -316,34 +315,28 @@ class Node {
       if (!frustum.intersectsBox(node.box)) continue;
 
       // Distance to camera (cheap aabb center)
-      const dCam = tmpVec.copy(node.box.min).add(node.box.max).multiplyScalar(0.5).distanceTo(camPos);
+      const dCam = store.scratch.tmpVec.copy(node.box.min).add(node.box.max).multiplyScalar(0.5).distanceTo(camPos);
 
       // -- Frustum part: always accept the node --
-      const slot = out.length++;
-      out[slot] = { node, distance: dCam };     // reserve slot; mouseHit may come later
+      const visibleNode: IVisibleNode = { node, distance: dCam };     // reserve slot; mouseHit may come later
 
-      // -- Ray part: skip if we already have something closer --
+      // -- Ray part: skips if we already have something closer --
       const tNode = intersectRayBoxSlab(ray, invDir, node.box);
-      if (tNode >= closestHitDist) continue;
-
-      // test objects        
-      store.traverse(node.head, store.getRaw, (rec) => {
-        const t = intersectRayBounds(ray, invDir, rec.bounds);
-        if (t < closestHitDist) {
-          closestHitDist = t;
-          out[slot].mouseHit = { id: rec.id, distance: t };
-        }
-      });
-      // while (idx !== -1) {
-      //   const rec = this.store.get(idx);
-      //   const t = intersectRayBoxSlab(ray, invDir, rec.box);
-      //   if (t < closestHitDist) {
-      //     closestHitDist = t;
-      //     out[slot].mouseHit = { id: rec.id, distance: t };
-      //   }
-      //   idx = rec.next;
-      // }
-
+      if (tNode < closestHitDist) {
+        // test objects for ray testing 
+        store.traverse(node.head, store.getRaw, (rec) => {
+          const t = intersectRayBounds(ray, invDir, rec.bounds);
+          if (t < closestHitDist) {
+            closestHitDist = t;
+            visibleNode.mouseHit = { id: rec.id, distance: t }; // record the mouse hit
+          }
+        });
+      }
+      
+      // Always call the visitor for this visible node
+      const bShouldStop = visitor(visibleNode);
+      if (bShouldStop) return; // visitor requested early termination
+ 
       // No sort, just push children in fixed order
       node.children?.forEach(child => stack[sp++] = child);
     }
