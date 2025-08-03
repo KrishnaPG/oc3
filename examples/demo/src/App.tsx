@@ -1,11 +1,12 @@
 import React, { Suspense } from "react";
 import { Canvas } from "@react-three/fiber";
+import { OrbitControls, Stats } from "@react-three/drei";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
+
 import { OctreeProxyProvider } from "../../../src/r3f";
 import { OctreeProxy } from "../../../src/worker-proxy";
 import Scene from "./Scene";
 import UI from "./UI";
-import { OrbitControls, Stats } from "@react-three/drei";
 
 const workerScriptURL = new URL('./worker.ts', import.meta.url); // "https://unpkg.com/oc3@latest/dist/worker-backend.js";
 

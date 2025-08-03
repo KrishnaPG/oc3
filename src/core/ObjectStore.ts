@@ -9,6 +9,17 @@ import { Box3, Vector3 } from "three";
  */
 const RECORD_BYTES = 32;
 
+export interface DataBox {
+  box: Box3,
+  id: number,
+  next: number
+};
+export interface DataBounds {
+  bounds: Float32Array,
+  id: number,
+  next: number
+};
+
 /**
  * A highly optimized, array-backed pool allocator for object records.
  * This class uses a single contiguous ArrayBuffer to store all object data,
@@ -43,21 +54,30 @@ export class ObjectStore {
    * Note: This creates a new Box3 object on every call. For performance-critical
    * code, access the raw float32/int32 arrays directly.
    */
-  get(idx: number) {
+  get(idx: number): DataBox {
     const o = idx * 8; // 8 x 4-byte words per record
     return {
-      minX: this.float32[o],
-      minY: this.float32[o + 1],
-      minZ: this.float32[o + 2],
-      maxX: this.float32[o + 3],
-      maxY: this.float32[o + 4],
-      maxZ: this.float32[o + 5],
-      id: this.int32[o + 6],
-      next: this.int32[o + 7],
+      // minX: this.float32[o],
+      // minY: this.float32[o + 1],
+      // minZ: this.float32[o + 2],
+      // maxX: this.float32[o + 3],
+      // maxY: this.float32[o + 4],
+      // maxZ: this.float32[o + 5],
       box: new Box3(
         new Vector3(this.float32[o], this.float32[o + 1], this.float32[o + 2]),
         new Vector3(this.float32[o + 3], this.float32[o + 4], this.float32[o + 5])
       ),
+      id: this.int32[o + 6],
+      next: this.int32[o + 7],
+    };
+  }
+
+  getRaw(idx: number): DataBounds {
+    const o = idx * 8; // 8 x 4-byte words per record
+    return {
+      bounds: this.float32.subarray(o, o + 6), //[minX, minY, minZ, maxX, maxY, maxZ]
+      id: this.int32[o + 6],
+      next: this.int32[o + 7],
     };
   }
 
@@ -149,5 +169,29 @@ export class ObjectStore {
     this.buffer = newBuf;
     this.float32 = new Float32Array(this.buffer);
     this.int32 = new Int32Array(this.buffer);
+  }
+
+  /**
+   * Traverse method for performance
+   * 
+   * @example:
+      store.traverse(0, store.get, (data: DataBox) => {
+        console.log(data.id);
+        return false;
+      });
+
+      store.traverse(0, store.getRaw, (data: DataBounds) => {
+        console.log(data.id, data.bounds);
+        return false;
+      });
+   */
+  public traverse<T extends DataBox | DataBounds>(cur: number,
+    getFn: (idx: number) => T,
+    cb: (d: T) => void | boolean) {
+    while (cur !== -1) {
+      const d = getFn.call(this, cur);
+      if (cb(d)) return; // stop if the callback returns any value, else continue
+      cur = d.next;
+    }
   }
 }

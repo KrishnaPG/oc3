@@ -1,4 +1,4 @@
-import { Box3, Ray, Vector3 } from "three";
+import { Box3, Frustum, Ray, Vector3 } from "three";
 import { ObjectStore } from "./ObjectStore";
 
 const tmpVec = new Vector3();
@@ -13,10 +13,21 @@ export interface RayCastHit {
   distance: number;
 };
 
+export interface VisibleNode {
+  node: Node;
+  distance: number;   // camera to node center (for LOD)
+  mouseHit?: {        // only present if the mouse ray hit something inside this node
+    id: number;
+    distance: number; // ray origin to target 
+  };
+}
+
 /**
  * A dynamic, loose octree implementation for 3D spatial partitioning.
  * It is "loose" because objects that span multiple child nodes are stored
  * in the parent, rather than being split or duplicated.
+ * 
+ * A maxDepth of 8, and maxObjects of 16, allows 16 x 8^8 = 268,435,456 objects;
  */
 export class Octree {
   readonly box: Box3;
@@ -60,6 +71,37 @@ export class Octree {
     this.root.raycast(ray, invDir, out, this.store);
   }
 
+  /**
+   * @exmple
+      // ---- once per frame ----
+      const visible: VisibleNode[] = scratchVis;
+      
+      octree.frustumRaycast(cameraFrustum, mouseRay, visible);
+
+      let closestPick: { id: number; distance: number } | null = null;
+      // ---- visitor loop ----
+      for (let i = 0, n = visible.length; i < n; ++i) {
+        const { node, distance, mouseHit } = visible[i];
+
+        // 1.  LOD for every visible node ------------------------------ 
+        const lod = lodFromDistance(distance);   // fast table lookup
+        renderNode(node, lod);
+
+        // 2.  Picking: first hit wins (array is front-to-back) -------- 
+        if(mouseHit && closestPick === null) {   // null check compiles to a single branch
+          closestPick = mouseHit;
+          highlight(mouseHit.id);
+        }
+      }
+      // ---- optional cleanup ----
+      scratchVis.length = 0;   // reuse next frame
+   */
+  frustumRaycast(frustum: Frustum, ray: Ray, out: VisibleNode[]): void {
+    out.length = 0; // reuse caller's array to avoid GC churn
+    const invDir = new Vector3(1 / ray.direction.x, 1 / ray.direction.y, 1 / ray.direction.z); // to avoid recalculations
+    this.root.frustumRaycast(frustum, ray, invDir, out, this.store);
+  }
+
   clear() {
     this.store.clear();
     this.root.clear();
@@ -70,6 +112,10 @@ export class Octree {
  * Represents a single node in the octree.
  * Each node has a bounding box and can either contain a list of objects
  * or have 8 child nodes.
+ * 
+ * Note: Since this is a "loose" Octree node, non-leaf nodes may also have
+ * objects (when they span multiple children they are kept in the parent).
+ * In other words, some nodes may have both children **and** objects.
  */
 class Node {
   level: number;
@@ -188,28 +234,35 @@ class Node {
     if (!box.intersectsBox(this.box)) return;
     if (this.children) {
       for (const c of this.children) c.aabbQuery(box, visitor, store);
-    } else {
-      let cur = this.head;
-      while (cur !== -1) {
-        const { id, box: objBox } = store.get(cur);
-        if (box.intersectsBox(objBox)) visitor(id);
-        cur = store.get(cur).next;
-      }
     }
+    // process objects in this node, if any
+    store.traverse(this.head, store.get, ({box: objBox, id}) => {
+      if (box.intersectsBox(objBox)) visitor(id);
+    })
+      // let cur = this.head;
+      // while (cur !== -1) {
+      //   const { id, box: objBox } = store.get(cur);
+      //   if (box.intersectsBox(objBox)) visitor(id);
+      //   cur = store.get(cur).next;
+      // }
   }
 
-  frustumQuery(frustum: any, visitor: (id: number) => void, store: ObjectStore) {
+  frustumQuery(frustum: Frustum, visitor: (id: number) => void, store: ObjectStore) {
     if (!frustum.intersectsBox(this.box)) return;
+    // recurse into children
     if (this.children) {
       for (const c of this.children) c.frustumQuery(frustum, visitor, store);
-    } else {
-      let cur = this.head;
-      while (cur !== -1) {
-        const { id, box } = store.get(cur);
-        if (frustum.intersectsBox(box)) visitor(id);
-        cur = store.get(cur).next;
-      }
     }
+    // process objects in this node, if any
+    store.traverse(this.head, store.get, ({ box, id }) => {
+      if (frustum.intersectsBox(box)) visitor(id);
+    })
+    // let cur = this.head;
+    // while (cur !== -1) {
+    //   const { id, box, next } = store.get(cur);
+    //   if (frustum.intersectsBox(box)) visitor(id);
+    //   cur = next;
+    // }
   }
 
   raycast(ray: Ray, invDir: Vector3, out: RayCastHit[], store: ObjectStore): void {
@@ -233,17 +286,66 @@ class Node {
         for (let j = tNear.length - 2; j >= 0; j -= 2) {
           stack[sp++] = node.children[tNear[j + 1]];
         }
-      } else {
-        // leaf – test all objects in this node
-        let idx = node.head;
-        while (idx !== -1) {
-          const rec = store.get(idx);
-          const t = intersectRayBoxSlab(ray, invDir, rec.box);
-          if (t !== Infinity) out.push({ id: rec.id, distance: t });
-          idx = rec.next;
-        }
       }
+      // test all objects in this node (leaf or intermediate)
+      store.traverse(node.head, store.getRaw, (rec) => {
+        const t = intersectRayBounds(ray, invDir, rec.bounds);
+        if (t !== Infinity) out.push({ id: rec.id, distance: t });
+      })
+      // let idx = node.head;
+      // while (idx !== -1) {
+      //   const rec = store.getRaw(idx);
+      //   const t = intersectRayBounds(ray, invDir, rec.bounds);
+      //   if (t !== Infinity) out.push({ id: rec.id, distance: t });
+      //   idx = rec.next;
+      // }
       node = sp ? stack[--sp] : null;
+    }
+  }
+
+  frustumRaycast(frustum: Frustum, ray: Ray, invDir: Vector3, out: VisibleNode[], store: ObjectStore) {
+    const camPos = ray.origin;            // we need this for LOD distance
+    const stack: Node[] = new Array(64);  // iterative DFS
+
+    let sp = 0;
+    stack[sp++] = this;
+    let closestHitDist = Infinity;      // early-out threshold for ray
+
+    while (sp) {
+      const node = stack[--sp];
+      if (!frustum.intersectsBox(node.box)) continue;
+
+      // Distance to camera (cheap aabb center)
+      const dCam = tmpVec.copy(node.box.min).add(node.box.max).multiplyScalar(0.5).distanceTo(camPos);
+
+      // -- Frustum part: always accept the node --
+      const slot = out.length++;
+      out[slot] = { node, distance: dCam };     // reserve slot; mouseHit may come later
+
+      // -- Ray part: skip if we already have something closer --
+      const tNode = intersectRayBoxSlab(ray, invDir, node.box);
+      if (tNode >= closestHitDist) continue;
+
+      // test objects        
+      store.traverse(node.head, store.getRaw, (rec) => {
+        const t = intersectRayBounds(ray, invDir, rec.bounds);
+        if (t < closestHitDist) {
+          closestHitDist = t;
+          out[slot].mouseHit = { id: rec.id, distance: t };
+        }
+      });
+      // while (idx !== -1) {
+      //   const rec = this.store.get(idx);
+      //   const t = intersectRayBoxSlab(ray, invDir, rec.box);
+      //   if (t < closestHitDist) {
+      //     closestHitDist = t;
+      //     out[slot].mouseHit = { id: rec.id, distance: t };
+      //   }
+      //   idx = rec.next;
+      // }
+
+      // No sort, just push children in fixed order
+      node.children?.forEach(child => stack[sp++] = child);
     }
   }
 
@@ -251,6 +353,37 @@ class Node {
     this.children = null;
     this.head = -1;
   }
+}
+
+// ---------- Fastest AABB-Ray slab test ----------
+function intersectRayBounds(
+  ray: Ray,
+  invDir: Vector3,
+  bounds: Float32Array<ArrayBuffer>
+): number {
+  const { origin } = ray;
+  const [minX, minY, minZ, maxX, maxY, maxZ] = bounds;
+  let tMin = (minX - origin.x) * invDir.x;
+  let tMax = (maxX - origin.x) * invDir.x;
+  if (tMin > tMax) [tMin, tMax] = [tMax, tMin];
+
+  let tYMin = (minY - origin.y) * invDir.y;
+  let tYMax = (maxY - origin.y) * invDir.y;
+  if (tYMin > tYMax) [tYMin, tYMax] = [tYMax, tYMin];
+
+  if (tMin > tYMax || tYMin > tMax) return Infinity;
+  if (tYMin > tMin) tMin = tYMin;
+  if (tYMax < tMax) tMax = tYMax;
+
+  let tZMin = (minZ - origin.z) * invDir.z;
+  let tZMax = (maxZ - origin.z) * invDir.z;
+  if (tZMin > tZMax) [tZMin, tZMax] = [tZMax, tZMin];
+
+  if (tMin > tZMax || tZMin > tMax) return Infinity;
+  if (tZMin > tMin) tMin = tZMin;
+  if (tZMax < tMax) tMax = tZMax;
+
+  return tMin >= 0 ? tMin : (tMax >= 0 ? tMax : Infinity);
 }
 
 // ---------- Fastest AABB-Ray slab test ----------
