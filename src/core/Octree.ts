@@ -253,12 +253,6 @@ class Node {
     store.traverse(this.head, store.get, ({ box: objBox, id }) => {
       if (box.intersectsBox(objBox)) visitor(id);
     });
-    // let cur = this.head;
-    // while (cur !== -1) {
-    //   const { id, box: objBox } = store.get(cur);
-    //   if (box.intersectsBox(objBox)) visitor(id);
-    //   cur = store.get(cur).next;
-    // }
   }
 
   frustumQuery(frustum: Frustum, visitor: (id: number) => void, store: ObjectStore) {
