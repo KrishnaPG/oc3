@@ -319,11 +319,12 @@ describe('Octree', () => {
   });
 
   it('should calculate correct LOD distances', () => {
-    const octree = new Octree(new Box3(new Vector3(-10, -10, -10), new Vector3(10, 10, 10)));
+    // Test case 1: Octree centered at (0,0,0)
+    const octree1 = new Octree(new Box3(new Vector3(-10, -10, -10), new Vector3(10, 10, 10)));
 
     // Insert one object
     const obj1 = { box: createBoxFromCenterSize(new Vector3(2, 2, 2), 1), id: 1 };
-    octree.insert(obj1);
+    octree1.insert(obj1);
 
     // Create a frustum that contains the object
     const cameraPosition = new Vector3(0, 0, 0);
@@ -346,14 +347,60 @@ describe('Octree', () => {
       return false;
     };
 
-    octree.frustumRaycast(frustum, ray, visitor);
+    octree1.frustumRaycast(frustum, ray, visitor);
 
     // We expect at least one node to be visited
     expect(nodeDistances.length).toBeGreaterThan(0);
 
+    // The root node's center is at (-10,-10,-10) to (10,10,10) -> center at (0,0,0)
+    const expectedDistance1 = cameraPosition.distanceTo(new Vector3(0, 0, 0));
+    expect(nodeDistances[0]).toBeCloseTo(expectedDistance1, 5);
+
+    // Test case 2: Octree centered at (5,5,5)
+    const octree2 = new Octree(new Box3(new Vector3(0, 0, 0), new Vector3(10, 10, 10)));
+    octree2.insert(obj1);
+
+    nodeDistances.length = 0;
+    octree2.frustumRaycast(frustum, ray, visitor);
+
     // The root node's center is at (0,0,0) to (10,10,10) -> center at (5,5,5)
-    const expectedDistance = cameraPosition.distanceTo(new Vector3(5, 5, 5));
-    expect(nodeDistances[0]).toBeCloseTo(expectedDistance, 5);
+    const expectedDistance2 = cameraPosition.distanceTo(new Vector3(5, 5, 5));
+    expect(nodeDistances[0]).toBeCloseTo(expectedDistance2, 5);
+
+    // Test case 3: Octree centered at (-5,-5,-5)
+    const octree3 = new Octree(new Box3(new Vector3(-10, -10, -10), new Vector3(0, 0, 0)));
+    octree3.insert(obj1);
+
+    // Create a frustum that will intersect with the third octree
+    const cameraPosition3 = new Vector3(-5, -5, -5);
+    const cameraTarget3 = new Vector3(-2, -2, -2);
+    const frustum3 = createFrustum(cameraPosition3, cameraTarget3, cameraUp, fov, aspect, near, far);
+    const ray3 = createRay(cameraPosition3, new Vector3(0, 0, 1));
+
+    nodeDistances.length = 0;
+    octree3.frustumRaycast(frustum3, ray3, visitor);
+
+    // We expect at least one node to be visited
+    expect(nodeDistances.length).toBeGreaterThan(0);
+
+    // The root node's center is at (-10,-10,-10) to (0,0,0) -> center at (-5,-5,-5)
+    const expectedDistance3 = cameraPosition3.distanceTo(new Vector3(-5, -5, -5));
+    expect(nodeDistances[0]).toBeCloseTo(expectedDistance3, 5);
+
+    // Test case 4: Different camera position
+    const cameraPosition2 = new Vector3(10, 10, 10);
+    const frustum2 = createFrustum(cameraPosition2, cameraTarget, cameraUp, fov, aspect, near, far);
+    const ray2 = createRay(cameraPosition2, new Vector3(0, 0, 1));
+
+    nodeDistances.length = 0;
+    octree1.frustumRaycast(frustum2, ray2, visitor);
+
+    // We expect at least one node to be visited
+    expect(nodeDistances.length).toBeGreaterThan(0);
+
+    // Distance from (10,10,10) to (0,0,0)
+    const expectedDistance4 = cameraPosition2.distanceTo(new Vector3(0, 0, 0));
+    expect(nodeDistances[0]).toBeCloseTo(expectedDistance4, 5);
   });
 
   it('should handle edge cases', () => {
