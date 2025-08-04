@@ -369,7 +369,9 @@ describe('Octree', () => {
 
     // Test case 3: Octree centered at (-5,-5,-5)
     const octree3 = new Octree(new Box3(new Vector3(-10, -10, -10), new Vector3(0, 0, 0)));
-    octree3.insert(obj1);
+    // Insert an object that's within the octree bounds
+    const obj3 = { box: createBoxFromCenterSize(new Vector3(-2, -2, -2), 1), id: 3 };
+    octree3.insert(obj3);
 
     // Create a frustum that will intersect with the third octree
     const cameraPosition3 = new Vector3(-5, -5, -5);
@@ -445,7 +447,9 @@ describe('Octree', () => {
     octree.frustumRaycast(frustum, ray, visitor);
     expect(visited).toBe(true);
 
-    // Ray that doesn't hit anything
+    // Ray that doesn't hit anything - clear the octree first
+    octree.clear();
+    
     let hit = false;
     const visitor2: IVisibleNodeVisitor = ({ node, distance, mouseHit }) => {
       if (mouseHit) {

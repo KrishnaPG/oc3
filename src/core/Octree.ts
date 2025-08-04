@@ -323,7 +323,13 @@ class Node {
         console.log(`Node center: (${center.x}, ${center.y}, ${center.z}), Camera pos: (${camPos.x}, ${camPos.y}, ${camPos.z}), Distance: ${dCam}`);
       }
 
-      // -- Frustum part: always accept the node --
+      // -- Frustum part: only accept the node if it has objects or children --
+      const hasObjects = node.head !== -1;
+      const hasChildren = node.children !== null;
+      
+      // Skip empty nodes with no children nor objects
+      if (!hasObjects && !hasChildren) continue;
+
       const visibleNode: IVisibleNode = { node, distance: dCam };     // reserve slot; mouseHit may come later
 
       // -- Ray part: skips if we already have something closer --
@@ -344,7 +350,7 @@ class Node {
         });
       }
       
-      // Always call the visitor for this visible node
+      // Call the visitor for this visible node
       const bShouldStop = visitor(visibleNode);
       if (bShouldStop) return; // visitor requested early termination
  
