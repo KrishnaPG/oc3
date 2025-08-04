@@ -509,9 +509,9 @@ describe('Octree', () => {
     // Verify both objects were found
     expect(visitedNodes.length).toBeGreaterThan(0);
 
-    // Verify the hit
+    // Verify the hit - objSpanning (id=1) should be hit since it's closer
     expect(closestHit).not.toBeNull();
-    expect(closestHit!.id).toBe(2);
+    expect(closestHit!.id).toBe(1);
   });
 
   it('should correctly handle deep hierarchies', () => {

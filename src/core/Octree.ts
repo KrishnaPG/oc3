@@ -318,11 +318,6 @@ class Node {
       const center = store.scratch.tmpVec.copy(node.box.min).add(node.box.max).multiplyScalar(0.5);
       const dCam = center.distanceTo(camPos);
 
-      // Debug logging for LOD distance test
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`Node center: (${center.x}, ${center.y}, ${center.z}), Camera pos: (${camPos.x}, ${camPos.y}, ${camPos.z}), Distance: ${dCam}`);
-      }
-
       // -- Frustum part: only accept the node if it has objects or children --
       const hasObjects = node.head !== -1;
       const hasChildren = node.children !== null;
@@ -334,18 +329,13 @@ class Node {
 
       // -- Ray part: skips if we already have something closer --
       const tNode = intersectRayBoxSlab(ray, invDir, node.box);
-      if (tNode < closestHitDist) {
+      if (tNode < closestHitDist && hasObjects) {
         // test objects for ray testing
         store.traverse(node.head, store.getRaw, (rec) => {
           const t = intersectRayBounds(ray, invDir, rec.bounds);
           if (t < closestHitDist) {
             closestHitDist = t;
             visibleNode.mouseHit = { id: rec.id, distance: t }; // record the mouse hit
-            
-            // Debug logging for ray hits
-            if (process.env.NODE_ENV === 'development') {
-              console.log(`Ray hit object ${rec.id} at distance ${t}`);
-            }
           }
         });
       }
