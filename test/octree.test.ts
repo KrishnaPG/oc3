@@ -29,7 +29,7 @@ function createFrustum(
   camera.updateMatrixWorld();
   
   const frustum = new Frustum();
-  frustum.setFromProjectionMatrix(camera.projectionMatrix.multiply(camera.matrixWorldInverse));
+  frustum.setFromProjectionMatrix(camera.projectionMatrix.clone().multiply(camera.matrixWorldInverse));
   
   return frustum;
 }
@@ -156,13 +156,6 @@ describe('Octree', () => {
 
     const frustum = createFrustum(cameraPosition, cameraTarget, cameraUp, fov, aspect, near, far);
 
-    // Debug: Log frustum and box information
-    console.log("Frustum planes:", frustum.planes);
-    console.log("obj1 box:", obj1.box);
-    console.log("obj2 box:", obj2.box);
-    console.log("obj1 in frustum:", referenceFrustumBoxIntersection(frustum, obj1.box));
-    console.log("obj2 in frustum:", referenceFrustumBoxIntersection(frustum, obj2.box));
-
     // Verify that obj1 is in the frustum and obj2 is not using reference implementation
     expect(referenceFrustumBoxIntersection(frustum, obj1.box)).toBe(true);
     expect(referenceFrustumBoxIntersection(frustum, obj2.box)).toBe(false);
@@ -247,26 +240,32 @@ describe('Octree', () => {
   it('should correctly combine frustum culling and ray casting', () => {
     const octree = new Octree(new Box3(new Vector3(-10, -10, -10), new Vector3(10, 10, 10)));
 
-    // Insert three objects:
+    // Insert objects:
     // 1. In the frustum and on the ray
     // 2. In the frustum but not on the ray
     // 3. Outside the frustum
+    // 4. Near the frustum boundary (should be outside)
+    // 5. Near the frustum boundary (should be inside)
     const obj1 = { box: createBoxFromCenterSize(new Vector3(2, 2, 2), 1), id: 1 };
     const obj2 = { box: createBoxFromCenterSize(new Vector3(2, 5, 2), 1), id: 2 };
-    const obj3 = { box: createBoxFromCenterSize(new Vector3(8, 8, 8), 1), id: 3 };
+    const obj3 = { box: createBoxFromCenterSize(new Vector3(15, 15, 15), 1), id: 3 };
+    const obj4 = { box: createBoxFromCenterSize(new Vector3(6, 6, 6), 1), id: 4 }; // Near boundary (outside)
+    const obj5 = { box: createBoxFromCenterSize(new Vector3(4, 4, 4), 1), id: 5 }; // Near boundary (inside)
 
     octree.insert(obj1);
     octree.insert(obj2);
     octree.insert(obj3);
+    octree.insert(obj4);
+    octree.insert(obj5);
 
-    // Create a frustum that contains obj1 and obj2 but not obj3
+    // Create a frustum with more realistic parameters
     const cameraPosition = new Vector3(0, 0, 0);
     const cameraTarget = new Vector3(2, 3, 2);
     const cameraUp = new Vector3(0, 1, 0);
-    const fov = Math.PI / 4;
+    const fov = Math.PI / 3; // 60 degrees - more realistic
     const aspect = 1;
     const near = 0.1;
-    const far = 100;
+    const far = 8; // Reduced to make culling more precise
 
     const frustum = createFrustum(cameraPosition, cameraTarget, cameraUp, fov, aspect, near, far);
 
@@ -274,6 +273,8 @@ describe('Octree', () => {
     expect(referenceFrustumBoxIntersection(frustum, obj1.box)).toBe(true);
     expect(referenceFrustumBoxIntersection(frustum, obj2.box)).toBe(true);
     expect(referenceFrustumBoxIntersection(frustum, obj3.box)).toBe(false);
+    expect(referenceFrustumBoxIntersection(frustum, obj4.box)).toBe(false);
+    expect(referenceFrustumBoxIntersection(frustum, obj5.box)).toBe(true);
 
     // Create a ray that hits obj1
     const rayOrigin = new Vector3(0, 0, 0);
