@@ -48,6 +48,17 @@ export class Octree {
   }
 
   insert(obj: { box: Box3; id?: number }) {
+    // Handle null/undefined objects gracefully
+    if (!obj || !obj.box) {
+      return;
+    }
+    
+    // Check for invalid box (min > max)
+    const { min, max } = obj.box;
+    if (min.x > max.x || min.y > max.y || min.z > max.z) {
+      return;
+    }
+    
     this.root.insert(obj.box, obj.id ?? 0, this.maxObjects, this.maxDepth, this.store);
   }
 
