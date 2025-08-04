@@ -160,10 +160,16 @@ class Node {
   remove(box: Box3, id: number, store: ObjectStore) {
     if (!box.intersectsBox(this.box)) return;
 
+    // First try to remove from current node's objects
+    const oldHead = this.head;
+    if(this.head !== -1) this.head = store.remove(this.head, id);
+    
+    // If the object was found and removed from current node, we're done
+    if (this.head !== oldHead) return;
+
+    // If not found in current node and we have children, recurse into children
     if (this.children) {
       for (const c of this.children) c.remove(box, id, store);
-    } else {
-      this.head = store.remove(this.head, id);
     }
   }
 

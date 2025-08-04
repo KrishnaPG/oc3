@@ -312,4 +312,121 @@ describe('ObjectStore', () => {
     expect(store.scratch.tmpVec.z).toBe(3);
     expect(store.scratch.stack[0]).toBe('test');
   });
+
+  it('should handle removal of non-existent object', () => {
+    const store = new ObjectStore();
+
+    // Add objects
+    const box1 = new Box3(new Vector3(1, 2, 3), new Vector3(4, 5, 6));
+    const box2 = new Box3(new Vector3(7, 8, 9), new Vector3(10, 11, 12));
+
+    let head = store.add(-1, box1, 1);
+    head = store.add(head, box2, 2);
+
+    // Try to remove non-existent object
+    const newHead = store.remove(head, 999);
+
+    // Head should remain unchanged
+    expect(newHead).toBe(head);
+
+    // Verify all objects are still accessible
+    const visitedIds: number[] = [];
+    store.traverse(head, store.get, (data: DataBox) => {
+      visitedIds.push(data.id);
+    });
+
+    expect(visitedIds).toEqual([2, 1]);
+  });
+
+  it('should handle removal from single-item list', () => {
+    const store = new ObjectStore();
+
+    // Add single object
+    const box1 = new Box3(new Vector3(1, 2, 3), new Vector3(4, 5, 6));
+    let head = store.add(-1, box1, 1);
+
+    // Remove the only object
+    head = store.remove(head, 1);
+
+    // Head should be -1 (empty list)
+    expect(head).toBe(-1);
+
+    // Verify no objects remain
+    const visitedIds: number[] = [];
+    store.traverse(head, store.get, (data: DataBox) => {
+      visitedIds.push(data.id);
+    });
+
+    expect(visitedIds).toEqual([]);
+  });
+
+  it('should handle removal of tail object', () => {
+    const store = new ObjectStore();
+
+    // Add objects
+    const box1 = new Box3(new Vector3(1, 2, 3), new Vector3(4, 5, 6));
+    const box2 = new Box3(new Vector3(7, 8, 9), new Vector3(10, 11, 12));
+    const box3 = new Box3(new Vector3(13, 14, 15), new Vector3(16, 17, 18));
+
+    let head = store.add(-1, box1, 1);
+    head = store.add(head, box2, 2);
+    head = store.add(head, box3, 3);
+
+    // Remove the tail object (id=1)
+    head = store.remove(head, 1);
+
+    // Verify the linked list structure
+    let current = head;
+    const ids: number[] = [];
+
+    while (current !== -1) {
+      const data = store.get(current);
+      ids.push(data.id);
+      current = data.next;
+    }
+
+    expect(ids).toEqual([3, 2]);
+  });
+
+  it('should handle multiple removals from same list', () => {
+    const store = new ObjectStore();
+
+    // Add objects
+    const box1 = new Box3(new Vector3(1, 2, 3), new Vector3(4, 5, 6));
+    const box2 = new Box3(new Vector3(7, 8, 9), new Vector3(10, 11, 12));
+    const box3 = new Box3(new Vector3(13, 14, 15), new Vector3(16, 17, 18));
+    const box4 = new Box3(new Vector3(19, 20, 21), new Vector3(22, 23, 24));
+
+    let head = store.add(-1, box1, 1);
+    head = store.add(head, box2, 2);
+    head = store.add(head, box3, 3);
+    head = store.add(head, box4, 4);
+
+    // Remove multiple objects
+    head = store.remove(head, 2); // Remove middle
+    head = store.remove(head, 4); // Remove head
+    head = store.remove(head, 1); // Remove tail
+
+    // Verify only one object remains
+    let current = head;
+    const ids: number[] = [];
+
+    while (current !== -1) {
+      const data = store.get(current);
+      ids.push(data.id);
+      current = data.next;
+    }
+
+    expect(ids).toEqual([3]);
+  });
+
+  it('should handle removal from empty list', () => {
+    const store = new ObjectStore();
+
+    // Try to remove from empty list
+    const head = store.remove(-1, 1);
+
+    // Head should remain -1
+    expect(head).toBe(-1);
+  });
 });
