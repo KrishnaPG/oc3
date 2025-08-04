@@ -1,6 +1,6 @@
 // octree.test.ts
 import { describe, it, expect } from 'bun:test';
-import { IVisibleNode, IVisibleNodeVisitor, Octree } from '../src';
+import { IVisibleNode, IVisibleNodeVisitor, Octree, IRayCastHit } from '../src';
 import { Box3, Vector3, Frustum, Ray, PerspectiveCamera } from 'three';
 
 // Helper functions for creating test scenarios
@@ -585,5 +585,336 @@ describe('Octree', () => {
     } else {
       expect(closestHit).toBeNull();
     }
+  });
+
+  it('should update objects correctly', () => {
+    const octree = new Octree(new Box3(new Vector3(-10, -10, -10), new Vector3(10, 10, 10)));
+
+    // Insert an object
+    const obj = { box: createBoxFromCenterSize(new Vector3(-2, -2, -2), 2), id: 1 };
+    octree.insert(obj);
+
+    // Verify the object is in the octree
+    const foundIds: number[] = [];
+    octree.aabbQuery(new Box3(new Vector3(-10, -10, -10), new Vector3(10, 10, 10)), (id) => foundIds.push(id));
+    expect(foundIds).toContain(1);
+    expect(foundIds.length).toBe(1);
+
+    // Update the object with a new position
+    obj.box = createBoxFromCenterSize(new Vector3(5, 5, 5), 2);
+    octree.update(obj);
+
+    // Verify the object is no longer in the old position
+    foundIds.length = 0;
+    octree.aabbQuery(new Box3(new Vector3(-5, -5, -5), new Vector3(-1, -1, -1)), (id) => foundIds.push(id));
+    expect(foundIds).not.toContain(1);
+
+    // Verify the object is in the new position
+    foundIds.length = 0;
+    octree.aabbQuery(new Box3(new Vector3(4, 4, 4), new Vector3(6, 6, 6)), (id) => foundIds.push(id));
+    expect(foundIds).toContain(1);
+    expect(foundIds.length).toBe(1);
+  });
+
+  it('should query objects within frustum correctly', () => {
+    const octree = new Octree(new Box3(new Vector3(-10, -10, -10), new Vector3(10, 10, 10)));
+
+    // Insert objects in different parts of the octree
+    const obj1 = { box: createBoxFromCenterSize(new Vector3(-5, -5, -5), 2), id: 1 };
+    const obj2 = { box: createBoxFromCenterSize(new Vector3(5, 5, 5), 2), id: 2 };
+    const obj3 = { box: createBoxFromCenterSize(new Vector3(0, 0, 0), 2), id: 3 };
+
+    octree.insert(obj1);
+    octree.insert(obj2);
+    octree.insert(obj3);
+
+    // Create a frustum that only sees obj1 and obj3
+    const cameraPosition = new Vector3(0, 0, 0);
+    const cameraTarget = new Vector3(-2, -2, -2);
+    const cameraUp = new Vector3(0, 1, 0);
+    const fov = Math.PI / 4; // 45 degrees
+    const aspect = 1;
+    const near = 0.1;
+    const far = 100;
+
+    const frustum = createFrustum(cameraPosition, cameraTarget, cameraUp, fov, aspect, near, far);
+
+    // Verify that obj1 and obj3 are in the frustum and obj2 is not using reference implementation
+    expect(referenceFrustumBoxIntersection(frustum, obj1.box)).toBe(true);
+    expect(referenceFrustumBoxIntersection(frustum, obj2.box)).toBe(false);
+    expect(referenceFrustumBoxIntersection(frustum, obj3.box)).toBe(true);
+
+    // Test frustum query
+    const foundIds: number[] = [];
+    octree.frustumQuery(frustum, (id) => foundIds.push(id));
+
+    expect(foundIds).toContain(1);
+    expect(foundIds).not.toContain(2);
+    expect(foundIds).toContain(3);
+    expect(foundIds.length).toBe(2);
+  });
+
+  it('should raycast objects correctly', () => {
+    const octree = new Octree(new Box3(new Vector3(-10, -10, -10), new Vector3(10, 10, 10)));
+
+    // Insert objects at different distances along a ray
+    const obj1 = { box: createBoxFromCenterSize(new Vector3(2, 2, 2), 1), id: 1 };
+    const obj2 = { box: createBoxFromCenterSize(new Vector3(5, 5, 5), 1), id: 2 };
+    const obj3 = { box: createBoxFromCenterSize(new Vector3(8, 8, 8), 1), id: 3 };
+
+    octree.insert(obj1);
+    octree.insert(obj2);
+    octree.insert(obj3);
+
+    // Create a ray that should hit all three objects
+    const rayOrigin = new Vector3(0, 0, 0);
+    const rayDirection = new Vector3(1, 1, 1).normalize();
+    const ray = createRay(rayOrigin, rayDirection);
+
+    // Calculate expected distances using reference implementation
+    const expectedDist1 = referenceRayBoxIntersection(ray, obj1.box);
+    const expectedDist2 = referenceRayBoxIntersection(ray, obj2.box);
+    const expectedDist3 = referenceRayBoxIntersection(ray, obj3.box);
+
+    expect(expectedDist1).toBeLessThan(expectedDist2);
+    expect(expectedDist2).toBeLessThan(expectedDist3);
+
+    // Test raycast
+    const hits: IRayCastHit[] = [];
+    octree.raycast(ray, hits);
+
+    expect(hits.length).toBe(3);
+    
+    // Verify all objects were hit
+    const hitIds = hits.map(hit => hit.id).sort();
+    expect(hitIds).toEqual([1, 2, 3]);
+
+    // Verify distances are correct (order may vary)
+    const hit1 = hits.find(hit => hit.id === 1);
+    const hit2 = hits.find(hit => hit.id === 2);
+    const hit3 = hits.find(hit => hit.id === 3);
+
+    expect(hit1).toBeDefined();
+    expect(hit2).toBeDefined();
+    expect(hit3).toBeDefined();
+
+    expect(hit1!.distance).toBeCloseTo(expectedDist1, 5);
+    expect(hit2!.distance).toBeCloseTo(expectedDist2, 5);
+    expect(hit3!.distance).toBeCloseTo(expectedDist3, 5);
+  });
+
+  it('should handle default constructor parameters', () => {
+    // Test with no parameters
+    const octree1 = new Octree();
+    expect(octree1.box).toBeDefined();
+    expect(octree1.maxDepth).toBe(8);
+    expect(octree1.maxObjects).toBe(16);
+
+    // Test with only box parameter
+    const box = new Box3(new Vector3(-5, -5, -5), new Vector3(5, 5, 5));
+    const octree2 = new Octree(box);
+    expect(octree2.box).toEqual(box);
+    expect(octree2.maxDepth).toBe(8);
+    expect(octree2.maxObjects).toBe(16);
+
+    // Test with custom options
+    const octree3 = new Octree(box, { maxDepth: 4, maxObjects: 8 });
+    expect(octree3.box).toEqual(box);
+    expect(octree3.maxDepth).toBe(4);
+    expect(octree3.maxObjects).toBe(8);
+
+    // Test with partial options
+    const octree4 = new Octree(box, { maxDepth: 6 });
+    expect(octree4.box).toEqual(box);
+    expect(octree4.maxDepth).toBe(6);
+    expect(octree4.maxObjects).toBe(16);
+  });
+
+  it('should handle visitor early termination', () => {
+    const octree = new Octree(new Box3(new Vector3(-10, -10, -10), new Vector3(10, 10, 10)));
+
+    // Insert multiple objects
+    const obj1 = { box: createBoxFromCenterSize(new Vector3(-5, -5, -5), 2), id: 1 };
+    const obj2 = { box: createBoxFromCenterSize(new Vector3(5, 5, 5), 2), id: 2 };
+    const obj3 = { box: createBoxFromCenterSize(new Vector3(0, 0, 0), 2), id: 3 };
+
+    octree.insert(obj1);
+    octree.insert(obj2);
+    octree.insert(obj3);
+
+    // Create a frustum that contains all objects
+    const frustum = createFrustum(
+      new Vector3(0, 0, 0),
+      new Vector3(1, 1, 1),
+      new Vector3(0, 1, 0),
+      Math.PI / 2,
+      1,
+      0.1,
+      100
+    );
+
+    // Create a ray
+    const ray = createRay(new Vector3(0, 0, 0), new Vector3(1, 1, 1).normalize());
+
+    // Test early termination with frustumRaycast
+    let visitCount = 0;
+    const visitor: IVisibleNodeVisitor = ({ node, distance }) => {
+      visitCount++;
+      // Stop after the first visit
+      return true;
+    };
+
+    octree.frustumRaycast(frustum, ray, visitor);
+    expect(visitCount).toBe(1);
+
+    // Test early termination with aabbQuery
+    visitCount = 0;
+    octree.aabbQuery(new Box3(new Vector3(-10, -10, -10), new Vector3(10, 10, 10)), (id) => {
+      visitCount++;
+      // Stop after the first object
+      return visitCount > 1; // Return truthy value to stop
+    });
+    expect(visitCount).toBe(1);
+  });
+
+  it('should handle edge cases', () => {
+    const octree = new Octree(new Box3(new Vector3(-10, -10, -10), new Vector3(10, 10, 10)));
+
+    // Test with objects that have exactly the same position and size
+    const obj1 = { box: createBoxFromCenterSize(new Vector3(0, 0, 0), 2), id: 1 };
+    const obj2 = { box: createBoxFromCenterSize(new Vector3(0, 0, 0), 2), id: 2 };
+    
+    octree.insert(obj1);
+    octree.insert(obj2);
+
+    const foundIds: number[] = [];
+    octree.aabbQuery(new Box3(new Vector3(-1, -1, -1), new Vector3(1, 1, 1)), (id) => foundIds.push(id));
+    
+    expect(foundIds).toContain(1);
+    expect(foundIds).toContain(2);
+    expect(foundIds.length).toBe(2);
+
+    // Test with objects that have zero size (degenerate boxes)
+    octree.clear();
+    const degenerateBox = new Box3(new Vector3(0, 0, 0), new Vector3(0, 0, 0));
+    const obj3 = { box: degenerateBox, id: 3 };
+    
+    octree.insert(obj3);
+    
+    foundIds.length = 0;
+    octree.aabbQuery(new Box3(new Vector3(-1, -1, -1), new Vector3(1, 1, 1)), (id) => foundIds.push(id));
+    
+    expect(foundIds).toContain(3);
+    expect(foundIds.length).toBe(1);
+
+    // Test with objects that have negative coordinates
+    octree.clear();
+    const obj4 = { box: createBoxFromCenterSize(new Vector3(-5, -5, -5), 2), id: 4 };
+    
+    octree.insert(obj4);
+    
+    foundIds.length = 0;
+    octree.aabbQuery(new Box3(new Vector3(-10, -10, -10), new Vector3(0, 0, 0)), (id) => foundIds.push(id));
+    
+    expect(foundIds).toContain(4);
+    expect(foundIds.length).toBe(1);
+  });
+
+  it('should handle different maxDepth and maxObjects configurations', () => {
+    // Test with maxDepth = 1 (no splitting)
+    const octree1 = new Octree(
+      new Box3(new Vector3(-10, -10, -10), new Vector3(10, 10, 10)),
+      { maxObjects: 2, maxDepth: 1 }
+    );
+
+    // Insert 3 objects in the same area
+    const obj1 = { box: createBoxFromCenterSize(new Vector3(1, 1, 1), 1), id: 1 };
+    const obj2 = { box: createBoxFromCenterSize(new Vector3(1.5, 1.5, 1.5), 1), id: 2 };
+    const obj3 = { box: createBoxFromCenterSize(new Vector3(1.2, 1.2, 1.2), 1), id: 3 };
+
+    octree1.insert(obj1);
+    octree1.insert(obj2);
+    octree1.insert(obj3);
+
+    // Verify all objects are still in the octree
+    const foundIds: number[] = [];
+    octree1.aabbQuery(new Box3(new Vector3(-10, -10, -10), new Vector3(10, 10, 10)), (id) => foundIds.push(id));
+
+    expect(foundIds).toContain(1);
+    expect(foundIds).toContain(2);
+    expect(foundIds).toContain(3);
+    expect(foundIds.length).toBe(3);
+
+    // Test with maxObjects = 1 (split immediately)
+    const octree2 = new Octree(
+      new Box3(new Vector3(-10, -10, -10), new Vector3(10, 10, 10)),
+      { maxObjects: 1, maxDepth: 3 }
+    );
+
+    octree2.insert(obj1);
+    octree2.insert(obj2);
+
+    // Verify all objects are still in the octree
+    foundIds.length = 0;
+    octree2.aabbQuery(new Box3(new Vector3(-10, -10, -10), new Vector3(10, 10, 10)), (id) => foundIds.push(id));
+
+    expect(foundIds).toContain(1);
+    expect(foundIds).toContain(2);
+    expect(foundIds.length).toBe(2);
+  });
+
+  it('should handle objects exactly on node boundaries', () => {
+    const octree = new Octree(
+      new Box3(new Vector3(-10, -10, -10), new Vector3(10, 10, 10)),
+      { maxObjects: 1, maxDepth: 2 }
+    );
+
+    // Insert an object that spans the boundary between nodes
+    const objSpanning = { box: new Box3(new Vector3(-0.1, -0.1, -0.1), new Vector3(0.1, 0.1, 0.1)), id: 1 };
+    octree.insert(objSpanning);
+
+    // Insert objects that are exactly on the boundary
+    const objOnBoundary1 = { box: new Box3(new Vector3(0, 0, 0), new Vector3(2, 2, 2)), id: 2 };
+    const objOnBoundary2 = { box: new Box3(new Vector3(-2, -2, -2), new Vector3(0, 0, 0)), id: 3 };
+    
+    octree.insert(objOnBoundary1);
+    octree.insert(objOnBoundary2);
+
+    // Verify all objects are in the octree
+    const foundIds: number[] = [];
+    octree.aabbQuery(new Box3(new Vector3(-10, -10, -10), new Vector3(10, 10, 10)), (id) => foundIds.push(id));
+
+    expect(foundIds).toContain(1);
+    expect(foundIds).toContain(2);
+    expect(foundIds).toContain(3);
+    expect(foundIds.length).toBe(3);
+  });
+
+  it('should handle error cases gracefully', () => {
+    const octree = new Octree(new Box3(new Vector3(-10, -10, -10), new Vector3(10, 10, 10)));
+
+    // Test with null/undefined (should not crash)
+    // @ts-ignore - Testing error case
+    expect(() => octree.insert(null)).not.toThrow();
+    // @ts-ignore - Testing error case
+    expect(() => octree.insert(undefined)).not.toThrow();
+    
+    // Test with invalid object structure
+    // @ts-ignore - Testing error case
+    expect(() => octree.insert({})).not.toThrow();
+    // @ts-ignore - Testing error case
+    expect(() => octree.insert({ id: 1 })).not.toThrow();
+    // @ts-ignore - Testing error case
+    expect(() => octree.insert({ box: null, id: 1 })).not.toThrow();
+
+    // Test with invalid box
+    const invalidBox = new Box3(new Vector3(10, 10, 10), new Vector3(-10, -10, -10)); // min > max
+    const obj = { box: invalidBox, id: 1 };
+    expect(() => octree.insert(obj)).not.toThrow();
+
+    // Verify no invalid objects were added
+    const foundIds: number[] = [];
+    octree.aabbQuery(new Box3(new Vector3(-10, -10, -10), new Vector3(10, 10, 10)), (id) => foundIds.push(id));
+    expect(foundIds.length).toBe(0);
   });
 });

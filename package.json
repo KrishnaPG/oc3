@@ -22,7 +22,7 @@
     "bench": "node bench/bench.js",
     "build": "tsup",
     "dev": "tsup --watch",
-    "test": "bun test test/octree.test.ts",
+    "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
@@ -41,6 +41,7 @@
   },
   "devDependencies": {
     "@react-three/fiber": "^9.2.0",
+    "@types/bun": "^1.2.19",
     "@types/node": "^24.0.15",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
