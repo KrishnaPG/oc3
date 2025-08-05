@@ -60,6 +60,7 @@ export class Octree {
     this.root.insert(obj.box, obj.id ?? 0, this.maxObjects, this.maxDepth, this.store);
   }
 
+  // TODO: is the box param needed to be passed for this?
   remove(obj: { box: Box3; id: number }) {
     this.root.remove(obj.box, obj.id, this.store);
   }
@@ -166,6 +167,7 @@ class Node {
     }
   }
 
+  // TODO: is the box param needed to be passed for this?
   remove(box: Box3, id: number, store: ObjectStore) {
     if (!box.intersectsBox(this.box)) return;
 
@@ -265,12 +267,6 @@ class Node {
     store.traverse(this.head, store.get, ({ box, id }) => {
       if (frustum.intersectsBox(box)) visitor(id);
     });
-    // let cur = this.head;
-    // while (cur !== -1) {
-    //   const { id, box, next } = store.get(cur);
-    //   if (frustum.intersectsBox(box)) visitor(id);
-    //   cur = next;
-    // }
   }
 
   raycast(ray: Ray, invDir: Vector3, out: IRayCastHit[], store: ObjectStore): void {
@@ -300,13 +296,6 @@ class Node {
         const t = intersectRayBounds(ray, invDir, rec.bounds);
         if (t !== Infinity) out.push({ id: rec.id, distance: t });
       });
-      // let idx = node.head;
-      // while (idx !== -1) {
-      //   const rec = store.getRaw(idx);
-      //   const t = intersectRayBounds(ray, invDir, rec.bounds);
-      //   if (t !== Infinity) out.push({ id: rec.id, distance: t });
-      //   idx = rec.next;
-      // }
       node = sp ? stack[--sp] : null;
     }
   }
