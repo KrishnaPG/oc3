@@ -63,12 +63,6 @@ export class ObjectStore {
   get(idx: number): DataBox {
     const o = idx * 8; // 8 x 4-byte words per record
     return {
-      // minX: this.float32[o],
-      // minY: this.float32[o + 1],
-      // minZ: this.float32[o + 2],
-      // maxX: this.float32[o + 3],
-      // maxY: this.float32[o + 4],
-      // maxZ: this.float32[o + 5],
       box: new Box3(
         new Vector3(this.float32[o], this.float32[o + 1], this.float32[o + 2]),
         new Vector3(this.float32[o + 3], this.float32[o + 4], this.float32[o + 5])
@@ -85,6 +79,11 @@ export class ObjectStore {
       id: this.int32[o + 6],
       next: this.int32[o + 7],
     };
+  }
+
+  getNext(idx: number): number {
+    const o = idx * 8; // 8 x 4-byte words per record
+    return this.int32[o + 7];
   }
 
   /**
